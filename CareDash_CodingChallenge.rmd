@@ -1,0 +1,254 @@
+---
+title: "Coding Challenge"
+author: Sahil Hooda
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Requiring some important libraries
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(mosaic)
+library(tidyr)
+library(chron)
+library(reshape2)
+library(ggpubr)
+library(caret)
+library(purrr)
+library(pROC)
+```
+
+##Loading the Data into R
+```{r}
+caredashmc <- read.csv("/Users/sahil/Desktop/CareDash/Data.csv")
+```
+
+```{r}
+sum(as.logical(caredashmc$sends))
+sum(as.logical(caredashmc$opens))
+sum(as.logical(caredashmc$clicks))
+sum(as.logical(caredashmc$unsubs))
+```
+# There are 296,174 sends, 74,923 opens, 5139 clicks, 115 unsubs
+
+#Removing unsubs from clicks 
+```{r}
+caredashmc$opens <- caredashmc$opens - caredashmc$unsubs
+caredashmc$clicks <- caredashmc$clicks - caredashmc$unsubs
+```
+
+#Separating Date & Time
+```{r}
+caredashmc <- separate(data=caredashmc, col= send_time, c("send_date", "send_time"), sep=" ")
+caredashmc <- separate(data=caredashmc, col= open_time, c("open_date", "open_time"), sep=" ")
+```
+#Cleaning up the time Variable
+```{r}
+#Cleaning time variable up
+caredashmc$send_time <- substr(caredashmc$send_time, 1, 8)
+caredashmc$open_time <- substr(caredashmc$open_time, 1, 8)
+```
+
+#Character to rdate
+```{r}
+caredashmc$send_date <- as.Date(caredashmc$send_date, format = "%Y-%m-%d")
+caredashmc$open_date <- as.Date(caredashmc$open_date, format = "%Y-%m-%d")
+caredashmc$send_time <- chron(times. = caredashmc$send_time)
+caredashmc$open_time <- chron(times. = caredashmc$open_time)
+```
+
+# Extracting hour from send time for grouping
+```{r}
+caredashmc$send_time_hour <- hours(caredashmc$send_time)
+caredashmc$open_time_hour <- hours(caredashmc$open_time)
+```
+
+#Tried to fix what the time looks like 
+```{r}
+caredashmc$send_time_hourpm <- caredashmc$send_time_hour -12
+```
+
+```{r}
+caredashmc$daydiff <- caredashmc$open_date - caredashmc$send_date
+table(caredashmc$daydiff)
+```
+##The maximum difference between open date and send date is only 8 days. Hence, open date is not a factor to consider in my analysis. 
+
+
+###SUMMARY STATISTICS
+#Finding the range of dates of the campaign
+```{r}
+range(caredashmc$send_date)
+range(caredashmc$open_date, na.rm = TRUE)
+```
+#The range for dates when E-mails were sent out are 2014-03-17 and 2014-03-23
+#The range for dates when E-mails were opened is 2014-03-17 and 2014-03-25
+#This helps because now we don't have to worry about fluctuations through month and year
+
+#What day of the week was the email sent and opened? 
+```{r}
+caredashmc$sday <- weekdays(as.POSIXct(caredashmc$send_date), abbreviate = F)
+caredashmc$oday <- weekdays(as.POSIXct(caredashmc$open_date), abbreviate = F)
+```
+
+```{r}
+caredashmc$sdayntime <- paste(caredashmc$sday, caredashmc$send_time_hourpm)
+```
+
+#Number of E-mails sent out by each day
+```{r}
+dat <- select(caredashmc, 5:8)
+daysummary <- aggregate(dat, by=list(Send_day=caredashmc$sday), FUN = sum)
+hoursummary <- aggregate(dat, by=list(Send_hour=caredashmc$send_time_hourpm), FUN = sum)
+daynhoursummary <- aggregate(dat, by=list(Send_daynhour=caredashmc$sdayntime), FUN = sum)
+```
+
+## VISUALIZING THE DATA
+
+#sendsperday
+```{r}
+#plot1 <- ggplot(data = caredashmc, aes(x = sday, y=sends)) +
+#  geom_histogram(stat = 'identity') +
+#  theme(text = element_text(size=20),
+#        axis.text.x = element_text(angle=90, hjust=1))
+#plot1
+```
+#Opensperday
+```{r}
+#plot2 <- ggplot(data = caredashmc, aes(x = sday, y=opens)) +
+#  geom_histogram(stat = 'identity') +
+#  theme(text = element_text(size=20),
+#        axis.text.x = element_text(angle=90, hjust=1))
+#plot2
+```
+#Sends distribution per hour (Graph is bad -> Can't see all data)
+```{r}
+#plot3 <- ggplot(data = caredashmc, aes(x = send_time_hourpm, y=sends)) +
+#  geom_histogram(stat = 'identity') +
+#  theme(text = element_text(size=20),
+#        axis.text.x = element_text(angle=90, hjust=1))
+#plot3
+```
+#opens distribution per hour (Graph misrepresents data -> due to scale, can't see all data)
+```{r}
+#plot4 <- ggplot(data = caredashmc, aes(x = send_time_hourpm, y=opens)) +
+#  geom_histogram(stat = 'identity') +
+#  theme(text = element_text(size=20),
+#        axis.text.x = element_text(angle=90, hjust=1))
+#plot4 
+```
+
+```{r}
+plot(hoursummary$Send_hour, hoursummary$sends)
+```
+
+## Plot for percentage of opens for sends and percentage of clicks for sends per hour
+```{r}
+hoursummary <- subset(hoursummary, !(sends<10))
+
+hoursummary$openpercent <- (hoursummary$opens/hoursummary$sends)*100
+hoursummary$clickpercent <- (hoursummary$clicks/hoursummary$sends)*100
+#hourlyjoint$clickbyopenpercent <- hourlyjoint$Clicks/joint$Opens
+
+newjoint1 <-select(hoursummary, Send_hour, openpercent, clickpercent)
+
+joint.long1<-melt(newjoint1,id.vars="Send_hour")
+
+ggplot(joint.long1,aes(x=Send_hour,y=value,fill=factor(variable)))+
+  geom_bar(stat="identity",position="dodge")+
+  xlab("Time in PM")+ylab("Percent")
+```
+```{r}
+ggplot(hoursummary,aes(x=Send_hour,y=clickpercent))+
+  geom_bar(stat="identity",position="dodge")+
+  xlab("Time in PM")+ylab("Click Percent")
+```
+
+
+## Plot for percentage of opens for sends and percentage of clicks for sends per day
+```{r}
+daysummary$openpercent <- (daysummary$opens/daysummary$sends)*100
+daysummary$clickpercent <- (daysummary$clicks/daysummary$sends)*100
+#daysummary$clickbyopenpercent <- joint$Clicks/joint$Opens
+
+newjoint <-select(daysummary, Send_day, openpercent, clickpercent)
+
+joint.long<-melt(newjoint,id.vars="Send_day")
+ggplot(joint.long,aes(x=Send_day,y=value,fill=factor(variable), legend = factor(variable)))+
+  geom_bar(stat="identity",position="dodge")+
+  xlab("Day")+ylab("t")
+```
+
+```{r}
+daynhoursummary$Send_daynhour <- as.factor(daynhoursummary$Send_daynhour)
+plot(daynhoursummary$Send_daynhour, log(daynhoursummary$sends))
+```
+##Plot for percentage of opens and clicks for sends for sends at a day and time
+## Removed day and time combinations that had less than 5 sends 
+```{r}
+daynhoursummary <- subset(daynhoursummary, !(sends<5))
+
+daynhoursummary$openpercent <- (daynhoursummary$opens/daynhoursummary$sends)*100
+daynhoursummary$clickpercent <- (daynhoursummary$clicks/daynhoursummary$sends)*100
+#daynhrjoint$clickbyopenpercent <- daynhrjoint$Clicks/daynhrjoint$Opens
+
+newjoint2 <-select(daynhoursummary, Send_daynhour, openpercent, clickpercent)
+
+joint.long2<-melt(newjoint2,id.vars="Send_daynhour")
+ggplot(joint.long2,aes(x=Send_daynhour,y=value,fill=factor(variable), legend = factor(variable)))+
+  geom_bar(stat="identity",position="dodge")+
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  xlab("Day And Time in PM")+ylab("Percent")
+```
+
+
+
+```{r}
+caredashmc$opens<- as.factor(caredashmc$opens)
+logit <- glm(opens ~ sday + send_time_hour + sday:send_time_hour, data = caredashmc, family = "binomial")
+anova(logit, test = "Chisq")
+```
+#The Interaction term helps the model
+
+
+```{r}
+#predict(logit, type = "response")
+#logit.pred <- ifelse(logit$fitted.values > 0.5, 1, 0)
+
+#logit_table <- table(logit.pred, caredashmc$opens)
+#roc.info = roc(caredashmc$opens, logit$fitted.values, plot = TRUE, legacy.axes = TRUE, 
+#                main = "Figure 4", xlab = "False Positive Percentage", ylab = "True Positive Percentage", 
+#                print.auc = TRUE)
+#logit_table
+```
+
+```{r}
+pred.logit<- predict(logit, type = "response")
+agpred.logit <- aggregate(pred.logit, by = list(caredashmc$sday, caredashmc$send_time_hour), FUN = mean)
+
+agpred.logit <- agpred.logit[(agpred.logit$Group.2>14 & agpred.logit$Group.2<21),]
+agpred.logit <- agpred.logit[!(agpred.logit$Group.1=="Sunday" & agpred.logit$Group.2==15),]
+agpred.logit <- agpred.logit[!(agpred.logit$Group.1=="Saturday" & agpred.logit$Group.2==15),]
+
+```
+
+```{r}
+agpred.logit$Group.1 <- paste(agpred.logit$Group.1, agpred.logit$Group.2)
+```
+
+```{r}
+ggplot(agpred.logit,aes(x=Group.1,y=x*100),)+
+  geom_bar(stat="identity",position="dodge")+
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  xlab("Day")+ylab("Percent")
+```
+
