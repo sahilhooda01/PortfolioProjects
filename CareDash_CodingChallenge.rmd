@@ -10,7 +10,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-#Requiring some important libraries
+#Importing the required packages
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -25,7 +25,7 @@ library(purrr)
 library(pROC)
 ```
 
-##Loading the Data into R
+##Loading the Data into RStudio
 ```{r}
 caredashmc <- read.csv("/Users/sahil/Desktop/CareDash/Data.csv")
 ```
@@ -70,7 +70,7 @@ caredashmc$send_time_hour <- hours(caredashmc$send_time)
 caredashmc$open_time_hour <- hours(caredashmc$open_time)
 ```
 
-#Tried to fix what the time looks like 
+#Tried fixing what the time looks like 
 ```{r}
 caredashmc$send_time_hourpm <- caredashmc$send_time_hour -12
 ```
@@ -79,7 +79,7 @@ caredashmc$send_time_hourpm <- caredashmc$send_time_hour -12
 caredashmc$daydiff <- caredashmc$open_date - caredashmc$send_date
 table(caredashmc$daydiff)
 ```
-##The maximum difference between open date and send date is only 8 days. Hence, open date is not a factor to consider in my analysis. 
+##The maximum difference between open date and send date is only 8 days. Therefore, open date is not a factor to consider in my analysis. 
 
 
 ###SUMMARY STATISTICS
